@@ -36,19 +36,23 @@ def _metrics_for(asset_id: int) -> dict[str, float]:
         {
             "battery": random.uniform(60, 95),
             "temperature": random.uniform(20, 30),
+            "speed": random.uniform(0, 22),
             "lat": 52.520 + random.uniform(-0.05, 0.05),
             "lng": 13.405 + random.uniform(-0.05, 0.05),
         },
     )
     s["battery"] -= random.uniform(0.0, 0.8)
-    if s["battery"] < 12:  # simulate a recharge cycle
+    if s["battery"] < 12:  # simulate a battery swap / recharge
         s["battery"] = random.uniform(85, 98)
     s["temperature"] += random.uniform(-0.6, 0.6)
+    # Pedelec assist is capped at 25 km/h (EU); random-walk within [0, 25].
+    s["speed"] = min(25.0, max(0.0, s["speed"] + random.uniform(-4, 4)))
     s["lat"] += random.uniform(-0.0012, 0.0012)
     s["lng"] += random.uniform(-0.0012, 0.0012)
     return {
         "battery": round(s["battery"], 2),
         "temperature": round(s["temperature"], 2),
+        "speed": round(s["speed"], 1),
         "lat": round(s["lat"], 5),
         "lng": round(s["lng"], 5),
     }

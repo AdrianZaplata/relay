@@ -12,7 +12,7 @@ interface Props {
 
 export function AssetsTable({ assets, selectedId, onSelect, onCreated }: Props) {
   const [name, setName] = useState('')
-  const [type, setType] = useState('charge_point')
+  const [type, setType] = useState('ebike')
   const [busy, setBusy] = useState(false)
 
   async function create(e: FormEvent) {

@@ -20,14 +20,16 @@ from .models import Asset, AssetEvent
 
 log = logging.getLogger("relay.seed")
 
+# A connected e-bike fleet: pedelecs (and a swappable battery pack from the
+# digital drive system) across sharing / company-fleet / delivery operators.
 # (name, type, [lifecycle path starting from provisioned])
 FLEET = [
-    ("Charger CP-101", "charge_point", [AssetStatus.ACTIVE]),
-    ("Charger CP-102", "charge_point", [AssetStatus.ACTIVE]),
-    ("Charger CP-103", "charge_point", [AssetStatus.ACTIVE, AssetStatus.MAINTENANCE]),
-    ("Gateway GW-7", "gateway", [AssetStatus.ACTIVE]),
-    ("Sensor SN-22", "sensor", []),  # stays provisioned
-    ("Charger CP-090", "charge_point", [AssetStatus.ACTIVE, AssetStatus.RETIRED]),
+    ("Pedelec SPV2-1001", "ebike", [AssetStatus.ACTIVE]),
+    ("Pedelec SPV2-1002", "ebike", [AssetStatus.ACTIVE]),
+    ("Pedelec SPV2-1003", "ebike", [AssetStatus.ACTIVE, AssetStatus.MAINTENANCE]),
+    ("Battery DDS-204", "battery", [AssetStatus.ACTIVE]),
+    ("Pedelec SPV2-1010", "ebike", []),  # fresh off the line, provisioned
+    ("Pedelec SPV2-0900", "ebike", [AssetStatus.ACTIVE, AssetStatus.RETIRED]),
 ]
 
 
