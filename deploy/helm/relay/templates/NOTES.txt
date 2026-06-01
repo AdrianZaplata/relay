@@ -1,0 +1,7 @@
+Relay {{ .Chart.AppVersion }} deployed as release {{ .Release.Name }}.
+
+Services: relay-api, relay-ingestor, relay-web{{ if .Values.simulator.enabled }}, relay-simulator{{ end }}.
+Datastores are external: PostgreSQL Flex (Terraform) and Kafka (Strimzi).
+
+This chart is delivered by ArgoCD — see deploy/argocd/relay-application.yaml.
+Push a change to the chart in git and ArgoCD reconciles the cluster to match.

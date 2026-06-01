@@ -1,0 +1,36 @@
+# ArgoCD Application — git is the source of truth; ArgoCD reconciles the cluster
+# to the desired state declared by the Helm chart in this repo.
+#
+# The loop: merge a change to deploy/helm/relay (or bump image.tag from CI) ->
+# ArgoCD detects drift -> syncs the cluster. No kubectl apply, no manual steps.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: relay
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/AdrianZaplata/relay.git
+    targetRevision: main
+    path: deploy/helm/relay
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: relay
+  syncPolicy:
+    automated:
+      prune: true # remove resources deleted from git
+      selfHeal: true # revert manual drift back to git state
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

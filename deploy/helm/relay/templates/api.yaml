@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-api
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/name: relay-api
+    app.kubernetes.io/component: api
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: relay-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay-api
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: {{ include "relay.image" (dict "component" "relay-service" "Values" .Values) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["uvicorn", "relay.api:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          env:
+            {{- include "relay.backendEnv" . | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay-api
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: relay-api
+  ports:
+    - port: 80
+      targetPort: 8000

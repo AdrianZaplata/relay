@@ -1,0 +1,60 @@
+# Default values for the Relay chart.
+# Datastores are NOT in this chart: PostgreSQL Flex is provisioned by Terraform,
+# Kafka by Strimzi. The chart deploys the application services only and points at
+# those managed endpoints — clean separation between infra and app delivery.
+
+image:
+  registry: registry.example.com/relay
+  tag: latest
+  pullPolicy: IfNotPresent
+
+config:
+  kafkaBootstrapServers: relay-kafka-bootstrap:9092 # Strimzi listener
+  telemetryTopic: telemetry
+  consumerGroup: relay-ingestor
+  logLevel: INFO
+
+# DATABASE_URL is injected from a Secret that ExternalSecret Operator syncs from
+# STACKIT Secret Manager — never templated into the chart.
+database:
+  secretName: relay-db
+  secretKey: database-url
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+# Ingest scales independently of read traffic (see ADR 0003).
+ingestor:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+# The device simulator is a demo aid — disabled in real environments.
+simulator:
+  enabled: false
+  replicas: 1
+
+web:
+  replicas: 2
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+
+ingress:
+  enabled: true
+  className: nginx
+  host: relay.example.com

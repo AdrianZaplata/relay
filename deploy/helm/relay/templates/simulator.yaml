@@ -1,0 +1,35 @@
+{{- if .Values.simulator.enabled }}
+# Demo aid only — produces synthetic telemetry. Disabled in real environments.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-simulator
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/name: relay-simulator
+    app.kubernetes.io/component: simulator
+spec:
+  replicas: {{ .Values.simulator.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: relay-simulator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay-simulator
+        app.kubernetes.io/component: simulator
+    spec:
+      containers:
+        - name: simulator
+          image: {{ include "relay.image" (dict "component" "relay-simulator" "Values" .Values) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: RELAY_API_BASE
+              value: http://relay-api
+            - name: RELAY_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef: { name: relay-config, key: kafka-bootstrap-servers }
+            - name: RELAY_TELEMETRY_TOPIC
+              valueFrom:
+                configMapKeyRef: { name: relay-config, key: telemetry-topic }
+{{- end }}

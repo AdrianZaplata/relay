@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-ingestor
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/name: relay-ingestor
+    app.kubernetes.io/component: ingestor
+spec:
+  {{- if not .Values.ingestor.autoscaling.enabled }}
+  replicas: {{ .Values.ingestor.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: relay-ingestor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay-ingestor
+        app.kubernetes.io/component: ingestor
+    spec:
+      # Same image as the API, different command — scales on its own axis.
+      containers:
+        - name: ingestor
+          image: {{ include "relay.image" (dict "component" "relay-service" "Values" .Values) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "relay.ingestor"]
+          env:
+            {{- include "relay.backendEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.ingestor.resources | nindent 12 }}

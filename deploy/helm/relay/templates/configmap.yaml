@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: relay-config
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+data:
+  kafka-bootstrap-servers: {{ .Values.config.kafkaBootstrapServers | quote }}
+  telemetry-topic: {{ .Values.config.telemetryTopic | quote }}
+  consumer-group: {{ .Values.config.consumerGroup | quote }}
+  log-level: {{ .Values.config.logLevel | quote }}
