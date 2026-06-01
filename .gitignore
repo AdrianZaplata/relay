@@ -34,3 +34,4 @@ dist/
 # Interview-prep artifacts — kept local, deliberately out of the portfolio history
 /job-description.md
 /relay-implementation-plan.md
+.gstack/
