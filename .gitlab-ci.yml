@@ -1,0 +1,86 @@
+# GitLab CI — everything is code; merge -> build -> (ArgoCD syncs to prod).
+# Lint and test gate every merge request; images build on main and get a
+# commit-SHA tag that the GitOps repo bumps for ArgoCD to reconcile.
+
+stages:
+  - lint
+  - test
+  - build
+
+variables:
+  UV_IMAGE: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+default:
+  interruptible: true
+
+.backend_rules: &backend_rules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+lint:backend:
+  stage: lint
+  image: $UV_IMAGE
+  script:
+    - cd apps/relay
+    - uv run ruff check .
+  <<: *backend_rules
+
+test:backend:
+  stage: test
+  image: $UV_IMAGE
+  script:
+    - cd apps/relay
+    - uv run pytest -q --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: apps/relay/report.xml
+  <<: *backend_rules
+
+build:web:
+  stage: test # typecheck + production build act as the frontend gate
+  image: node:22-alpine
+  script:
+    - cd apps/web
+    - npm ci
+    - npm run build
+  <<: *backend_rules
+
+# Build images with kaniko (no privileged docker daemon needed).
+.image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - |
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR/$CONTEXT"
+      --dockerfile "$CI_PROJECT_DIR/$CONTEXT/Dockerfile"
+      --destination "$CI_REGISTRY_IMAGE/$NAME:$CI_COMMIT_SHORT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/$NAME:latest"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+build:api-image:
+  extends: .image
+  variables:
+    CONTEXT: apps/relay
+    NAME: relay-service
+
+build:web-image:
+  extends: .image
+  variables:
+    CONTEXT: apps/web
+    NAME: relay-web
+
+build:simulator-image:
+  extends: .image
+  variables:
+    CONTEXT: apps/simulator
+    NAME: relay-simulator
