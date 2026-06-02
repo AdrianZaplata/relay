@@ -1,0 +1,140 @@
+{{- if .Values.devDatastores.enabled }}
+# DEV ONLY — in-cluster Postgres + Redpanda so the chart is self-contained on a
+# throwaway cluster (kind). Single replica, no persistence (emptyDir / ephemeral):
+# this is a demo datastore, not a database. Production renders NONE of this — it
+# points at managed PostgreSQL Flex + Strimzi via values.yaml (devDatastores off).
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.database.secretName }}
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/name: relay-db
+type: Opaque
+stringData:
+  # The chart reads this via secretKeyRef (see relay.backendEnv). In production the
+  # same key is synced from STACKIT Secret Manager by the External Secrets Operator.
+  {{ .Values.database.secretKey }}: postgresql+asyncpg://relay:relay@relay-postgres:5432/relay
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-postgres
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/name: relay-postgres
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: relay-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay-postgres
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER, value: relay }
+            - { name: POSTGRES_PASSWORD, value: relay }
+            - { name: POSTGRES_DB, value: relay }
+            # default PGDATA under the mount; emptyDir means data is wiped on restart.
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "relay", "-d", "relay"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay-postgres
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: relay-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-redpanda
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/name: relay-redpanda
+    app.kubernetes.io/component: broker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: relay-redpanda
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay-redpanda
+        app.kubernetes.io/component: broker
+    spec:
+      containers:
+        - name: redpanda
+          # Pinned to match the compose stack (deploy/compose/docker-compose.yml).
+          image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+          # NOTE: args (not command) — the image ENTRYPOINT is /entrypoint.sh, an rpk
+          # wrapper that makes `redpanda start --mode=dev-container` work; overriding
+          # command would bypass it and the raw broker binary rejects --mode. This is
+          # the same arg list compose passes (compose `command` == k8s `args`).
+          # dev-container is the single-node, low-footprint mode. We advertise the
+          # in-cluster Service DNS so api/ingestor/simulator reach the broker, and
+          # enable auto topic creation as a belt to up.sh's explicit topic create.
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=1
+            - --default-log-level=warn
+            - --kafka-addr=internal://0.0.0.0:9092
+            - --advertise-kafka-addr=internal://relay-redpanda:9092
+            - --set
+            - redpanda.auto_create_topics_enabled=true
+          ports:
+            - containerPort: 9092
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1536Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay-redpanda
+  labels:
+    {{- include "relay.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: relay-redpanda
+  ports:
+    - port: 9092
+      targetPort: 9092
+{{- end }}

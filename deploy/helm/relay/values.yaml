@@ -20,6 +20,12 @@ database:
   secretName: relay-db
   secretKey: database-url
 
+# Dev-only escape hatch: stand up in-cluster Postgres + Redpanda so the chart is
+# self-contained on a throwaway cluster (kind). OFF by default — production keeps
+# datastores external (managed PG Flex + Strimzi). See values-dev.yaml + deploy/kind.
+devDatastores:
+  enabled: false
+
 api:
   replicas: 2
   resources:

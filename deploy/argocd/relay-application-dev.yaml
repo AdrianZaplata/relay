@@ -1,0 +1,42 @@
+# Dev variant of the Relay ArgoCD Application — for the local kind cluster.
+#
+# Same GitOps contract as relay-application.yaml (git is the source of truth;
+# ArgoCD reconciles the cluster to it), but renders the chart with values-dev.yaml
+# so it includes the in-cluster Postgres + Redpanda and the :dev images.
+#
+# Apply ONE of the two Application manifests, not both — they share the name
+# `relay`. deploy/argocd/up.sh applies THIS one and rewrites targetRevision to the
+# branch you're on, so the loop demo (push a chart change -> ArgoCD syncs) works
+# from a feature branch as well as from main. The :dev images come from kind's
+# local store, not a registry.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: relay
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/AdrianZaplata/relay.git
+    targetRevision: main
+    path: deploy/helm/relay
+    helm:
+      valueFiles:
+        - values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: relay
+  syncPolicy:
+    automated:
+      prune: true # remove resources deleted from git
+      selfHeal: true # revert manual drift back to git state
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
