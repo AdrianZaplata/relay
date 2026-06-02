@@ -64,7 +64,7 @@ With ArgoCD watching the repo, git is the only way to change the cluster:
 ```bash
 # edit deploy/helm/relay/values-dev.yaml: web.replicas 1 -> 2
 git commit -am 'demo: scale web to 2' && git push
-kubectl -n argocd annotate app relay argocd.argoproj.io/refresh=hard --overwrite
+kubectl -n argocd annotate app relay-dev argocd.argoproj.io/refresh=hard --overwrite
 kubectl -n relay get pods -l app.kubernetes.io/name=relay-web -w   # a 2nd pod appears
 ```
 

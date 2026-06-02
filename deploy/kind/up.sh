@@ -6,7 +6,10 @@
 #
 # Images are loaded straight into kind's container store and referenced by bare
 # name with imagePullPolicy: IfNotPresent, so nothing is pushed to a registry.
-# Idempotent: safe to re-run (reuses the cluster, re-builds + re-loads images).
+# Idempotent: safe to re-run (reuses the cluster, rebuilds + reloads images, and rolls
+# the app pods to pick them up). Run this BEFORE handing the cluster to ArgoCD
+# (deploy/argocd/up.sh) — afterward ArgoCD's selfHeal owns the release, so re-running
+# helm here would fight it.
 set -euo pipefail
 
 CLUSTER=relay
@@ -39,16 +42,20 @@ helm upgrade --install "${CLUSTER}" "${ROOT}/deploy/helm/relay" \
   -n "${NAMESPACE}" --create-namespace
 
 echo "==> [5/6] wait for datastores, create topic"
-kubectl -n "${NAMESPACE}" rollout status deploy/relay-postgres --timeout=180s
-kubectl -n "${NAMESPACE}" rollout status deploy/relay-redpanda --timeout=180s
+# 300s, not 180s: postgres:16-alpine + redpanda are pulled from upstream registries on
+# a cold node (only the app :dev images are pre-loaded), which can be slow on first run.
+kubectl -n "${NAMESPACE}" rollout status deploy/relay-postgres --timeout=300s
+kubectl -n "${NAMESPACE}" rollout status deploy/relay-redpanda --timeout=300s
 # Mirror the compose 'redpanda-init' one-shot: ensure the telemetry topic exists
 # (auto-create is also on, this just removes the first-produce race). Idempotent.
 kubectl -n "${NAMESPACE}" exec deploy/relay-redpanda -- \
   rpk topic create telemetry --partitions 3 --replicas 1 2>/dev/null || true
-# The Kafka-dependent pods (ingestor, simulator) may have crash-looped while the
-# broker was still coming up; restart them now that the broker + topic exist so
-# they reconnect immediately instead of waiting out exponential backoff.
-kubectl -n "${NAMESPACE}" rollout restart deploy/relay-ingestor deploy/relay-simulator
+# Restart all app pods now that the broker + topic exist: (1) ingestor/simulator may
+# have crash-looped while the broker came up, and (2) on a re-run the :dev tag is
+# unchanged, so without a restart api/web would keep running the previous image instead
+# of the one we just rebuilt + loaded.
+kubectl -n "${NAMESPACE}" rollout restart \
+  deploy/relay-api deploy/relay-ingestor deploy/relay-web deploy/relay-simulator
 
 echo "==> [6/6] wait for app, seed demo fleet"
 kubectl -n "${NAMESPACE}" rollout status deploy/relay-api --timeout=180s

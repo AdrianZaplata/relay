@@ -4,15 +4,16 @@
 # ArgoCD reconciles the cluster to it), but renders the chart with values-dev.yaml
 # so it includes the in-cluster Postgres + Redpanda and the :dev images.
 #
-# Apply ONE of the two Application manifests, not both — they share the name
-# `relay`. deploy/argocd/up.sh applies THIS one and rewrites targetRevision to the
-# branch you're on, so the loop demo (push a chart change -> ArgoCD syncs) works
-# from a feature branch as well as from main. The :dev images come from kind's
-# local store, not a registry.
+# Named `relay-dev` so it can't clobber the production Application (`relay`): if both
+# ever land on one cluster, ArgoCD shows a visible shared-resource conflict instead of
+# one silently overwriting the other's values. deploy/argocd/up.sh applies THIS one and
+# rewrites targetRevision to the branch you're on, so the loop demo (push a chart change
+# -> ArgoCD syncs) works from a feature branch as well as from main. The :dev images
+# come from kind's local store, not a registry.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: relay
+  name: relay-dev
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
