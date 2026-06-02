@@ -6,11 +6,13 @@ a documented debug/seed convenience that reuses the same idempotent writer.
 """
 
 import logging
+import math
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import desc, select, text
+from sqlalchemy import and_, desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import schemas
@@ -177,3 +179,109 @@ async def ingest_telemetry_http(
         select(Telemetry).where(Telemetry.event_id == reading.event_id)
     )
     return row
+
+
+# --- fleet map ---------------------------------------------------------------
+# A bike that has gone silent for longer than this drops off the live map.
+# Bounds the position query to recent telemetry so it scales with fleet size,
+# not total table history (the table is append-only and unbounded).
+POSITION_MAX_AGE = timedelta(hours=1)
+
+
+def _finite_or_none(value: float | None) -> float | None:
+    """Normalize a non-finite optional vital to None. A Float column accepts
+    NaN/Inf and nothing rejects them at ingest. Pydantic's response model
+    already renders non-finite floats as JSON null (ser_json_inf_nan="null"),
+    so this is defensive: it pins "bad vital -> null" at the source rather than
+    relying on that serializer default, and keeps the value out of any non-model
+    JSON path (raw JSONResponse uses allow_nan=False and would raise)."""
+    return value if value is not None and math.isfinite(value) else None
+
+
+@app.get(
+    "/fleet/positions",
+    response_model=list[schemas.FleetPosition],
+    tags=["fleet"],
+)
+async def fleet_positions(session: AsyncSession = Depends(get_session)):
+    """Latest GPS position (+ battery/speed) per reporting asset, for the map.
+
+    Takes the most recent reading per `(asset_id, metric)` for the position
+    metrics via a portable join-on-MAX (a subquery of grouped `max(recorded_at)`
+    joined back to the table on equality) — works on Postgres *and* the SQLite
+    test DB, avoiding the Postgres-only `DISTINCT ON`. Only assets reporting
+    both lat and lng are placeable, so those are the ones we return.
+
+    Bounded to telemetry within `POSITION_MAX_AGE` so the scan stays proportional
+    to recent traffic rather than all history.
+    """
+    metrics = ("lat", "lng", "battery", "speed")
+    cutoff = datetime.now(timezone.utc) - POSITION_MAX_AGE
+    latest = (
+        select(
+            Telemetry.asset_id.label("asset_id"),
+            Telemetry.metric.label("metric"),
+            func.max(Telemetry.recorded_at).label("recorded_at"),
+        )
+        .where(Telemetry.metric.in_(metrics), Telemetry.recorded_at >= cutoff)
+        .group_by(Telemetry.asset_id, Telemetry.metric)
+        .subquery()
+    )
+    stmt = select(Telemetry).join(
+        latest,
+        and_(
+            Telemetry.asset_id == latest.c.asset_id,
+            Telemetry.metric == latest.c.metric,
+            Telemetry.recorded_at == latest.c.recorded_at,
+        ),
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+
+    # Collapse to one row per (asset, metric). On `recorded_at` ties the join
+    # yields multiple rows; keep the newest by `id` so "latest wins" is
+    # deterministic instead of an arbitrary DB row order.
+    by_asset: dict[int, dict[str, Telemetry]] = {}
+    for row in rows:
+        current = by_asset.setdefault(row.asset_id, {}).get(row.metric)
+        if current is None or row.id > current.id:
+            by_asset[row.asset_id][row.metric] = row
+    if not by_asset:
+        return []
+
+    assets = (
+        await session.execute(select(Asset).where(Asset.id.in_(by_asset.keys())))
+    ).scalars().all()
+    asset_by_id = {a.id: a for a in assets}
+
+    positions: list[schemas.FleetPosition] = []
+    for asset_id, metric_map in by_asset.items():
+        asset = asset_by_id.get(asset_id)
+        # Need both coordinates to place a marker; skip half-reported assets.
+        if asset is None or "lat" not in metric_map or "lng" not in metric_map:
+            continue
+        lat, lng = metric_map["lat"].value, metric_map["lng"].value
+        # Guard non-finite coords (a Float column accepts NaN/Inf): they break
+        # JSON and place a marker at undefined coordinates on the client.
+        if not (math.isfinite(lat) and math.isfinite(lng)):
+            continue
+        positions.append(
+            schemas.FleetPosition(
+                asset_id=asset_id,
+                name=asset.name,
+                type=asset.type,
+                status=asset.status,
+                lat=lat,
+                lng=lng,
+                battery=_finite_or_none(
+                    metric_map["battery"].value if "battery" in metric_map else None
+                ),
+                speed=_finite_or_none(
+                    metric_map["speed"].value if "speed" in metric_map else None
+                ),
+                recorded_at=max(
+                    metric_map["lat"].recorded_at, metric_map["lng"].recorded_at
+                ),
+            )
+        )
+    positions.sort(key=lambda p: p.asset_id)
+    return positions

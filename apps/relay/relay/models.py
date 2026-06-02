@@ -62,6 +62,9 @@ class Telemetry(Base):
     __table_args__ = (
         # Serves the "recent readings for this asset" dashboard query.
         Index("ix_telemetry_asset_recorded", "asset_id", "recorded_at"),
+        # Serves the fleet-map "latest position per (asset, metric)" query:
+        # filters/groups on metric and joins back on (asset_id, metric, recorded_at).
+        Index("ix_telemetry_metric_asset_recorded", "metric", "asset_id", "recorded_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

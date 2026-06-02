@@ -1,4 +1,4 @@
-import type { Asset, AssetEvent, Telemetry } from './types'
+import type { Asset, AssetEvent, FleetPosition, Telemetry } from './types'
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
 
@@ -47,4 +47,6 @@ export const api = {
     ),
 
   events: (id: number) => fetch(`${BASE}/assets/${id}/events`).then((r) => handle<AssetEvent[]>(r)),
+
+  fleetPositions: () => fetch(`${BASE}/fleet/positions`).then((r) => handle<FleetPosition[]>(r)),
 }
