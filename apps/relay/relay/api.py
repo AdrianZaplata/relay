@@ -188,6 +188,16 @@ async def ingest_telemetry_http(
 POSITION_MAX_AGE = timedelta(hours=1)
 
 
+def _finite_or_none(value: float | None) -> float | None:
+    """Normalize a non-finite optional vital to None. A Float column accepts
+    NaN/Inf and nothing rejects them at ingest. Pydantic's response model
+    already renders non-finite floats as JSON null (ser_json_inf_nan="null"),
+    so this is defensive: it pins "bad vital -> null" at the source rather than
+    relying on that serializer default, and keeps the value out of any non-model
+    JSON path (raw JSONResponse uses allow_nan=False and would raise)."""
+    return value if value is not None and math.isfinite(value) else None
+
+
 @app.get(
     "/fleet/positions",
     response_model=list[schemas.FleetPosition],
@@ -262,8 +272,12 @@ async def fleet_positions(session: AsyncSession = Depends(get_session)):
                 status=asset.status,
                 lat=lat,
                 lng=lng,
-                battery=metric_map["battery"].value if "battery" in metric_map else None,
-                speed=metric_map["speed"].value if "speed" in metric_map else None,
+                battery=_finite_or_none(
+                    metric_map["battery"].value if "battery" in metric_map else None
+                ),
+                speed=_finite_or_none(
+                    metric_map["speed"].value if "speed" in metric_map else None
+                ),
                 recorded_at=max(
                     metric_map["lat"].recorded_at, metric_map["lng"].recorded_at
                 ),

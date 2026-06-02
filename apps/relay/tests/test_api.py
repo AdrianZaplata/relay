@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from relay.models import Asset, Telemetry
+
 
 async def _create(client, name="Charger CP-1", type_="charge_point"):
     r = await client.post("/assets", json={"name": name, "type": type_})
@@ -132,6 +134,48 @@ async def test_fleet_positions_null_battery_and_speed_when_unreported(client):
         assert r.status_code == 201
 
     pos = (await client.get("/fleet/positions")).json()[0]
+    assert pos["battery"] is None
+    assert pos["speed"] is None
+
+
+@pytest.mark.asyncio
+async def test_fleet_positions_drops_non_finite_battery_and_speed(client, session_factory):
+    # A Float column accepts non-finite values and nothing rejects them at
+    # ingest, so they can reach the DB. Contract: a bad optional vital surfaces as
+    # null, and the asset still shows with valid coordinates. (Pydantic already
+    # renders non-finite as null; this pins that behavior so it can't silently
+    # regress.) Insert directly: a JSON-encoded request body can't carry NaN/Inf.
+    # We use Inf for both vitals because SQLite coerces NaN to NULL (Postgres
+    # stores it); Inf reproduces the same non-finite path on either backend.
+    now = datetime.now(timezone.utc)
+    async with session_factory() as session:
+        asset = Asset(name="Pedelec SPV2-9009", type="ebike", status="active")
+        session.add(asset)
+        await session.flush()
+        aid = asset.id
+        session.add_all(
+            Telemetry(
+                asset_id=aid,
+                metric=metric,
+                value=value,
+                recorded_at=now,
+                event_id=f"{metric}-nf",
+            )
+            for metric, value in [
+                ("lat", 52.52),
+                ("lng", 13.405),
+                ("battery", float("inf")),
+                ("speed", float("-inf")),
+            ]
+        )
+        await session.commit()
+
+    resp = await client.get("/fleet/positions")
+    assert resp.status_code == 200
+    pos = resp.json()[0]
+    assert pos["asset_id"] == aid
+    assert pos["lat"] == 52.52
+    assert pos["lng"] == 13.405
     assert pos["battery"] is None
     assert pos["speed"] is None
 
