@@ -53,7 +53,8 @@ make down     # stop everything
 Then open **http://localhost:5173** — create a bike, drive it through its lifecycle
 (watch an illegal transition get rejected with `409`), and see live telemetry stream
 into the chart **without anyone calling an HTTP endpoint** — it arrives via Kafka.
-OpenAPI docs at **http://localhost:8000/docs**.
+Flip to the **Map** tab to watch the fleet move on a live OpenStreetMap, each bike
+repositioning as its GPS telemetry streams in. OpenAPI docs at **http://localhost:8000/docs**.
 
 ---
 
@@ -64,7 +65,7 @@ OpenAPI docs at **http://localhost:8000/docs**.
 | Backend API | FastAPI + async SQLAlchemy (asyncpg) | Python/FastAPI services |
 | Data model | PostgreSQL, lifecycle state machine, audit log | PostgreSQL Flex |
 | Event-driven | Redpanda (Kafka API), producer + consumer group | Apache Kafka (Strimzi) |
-| Frontend | React + TypeScript + Vite | React/TS operator apps |
+| Frontend | React + TypeScript + Vite, live fleet map (react-leaflet) | React/TS operator apps |
 | Hot/cold data | PG hot state + object-storage lake sketch | PG Flex + Object Storage + Airflow |
 | Delivery | Dockerized, Helm chart, ArgoCD `Application` | Kubernetes + Helm + ArgoCD GitOps |
 | IaC | STACKIT-targeted Terraform (authored) | Terraform / Terragrunt |
@@ -110,7 +111,7 @@ Services read `RELAY_*` environment variables (compose sets them):
 Honest accounting (this matters more than breadth):
 
 - **Running end-to-end:** simulator → Kafka → ingestor → PostgreSQL → API → console,
-  with tests and a one-command demo.
+  with a live GPS **fleet map**, tests, and a one-command demo.
 - **Authored & reviewed (not a live cluster):** Helm chart, ArgoCD `Application`,
   STACKIT Terraform, GitLab CI. Each is something I can walk through and explain.
 

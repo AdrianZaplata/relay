@@ -25,3 +25,15 @@ export interface Telemetry {
   value: number
   recorded_at: string
 }
+
+export interface FleetPosition {
+  asset_id: number
+  name: string
+  type: string
+  status: AssetStatus
+  lat: number
+  lng: number
+  battery: number | null
+  speed: number | null
+  recorded_at: string
+}

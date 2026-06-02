@@ -27,6 +27,9 @@ FLEET = [
     ("Pedelec SPV2-1001", "ebike", [AssetStatus.ACTIVE]),
     ("Pedelec SPV2-1002", "ebike", [AssetStatus.ACTIVE]),
     ("Pedelec SPV2-1003", "ebike", [AssetStatus.ACTIVE, AssetStatus.MAINTENANCE]),
+    ("Pedelec SPV2-1004", "ebike", [AssetStatus.ACTIVE]),
+    ("Pedelec SPV2-1005", "ebike", [AssetStatus.ACTIVE]),
+    ("Pedelec SPV2-1006", "ebike", [AssetStatus.ACTIVE]),
     ("Battery DDS-204", "battery", [AssetStatus.ACTIVE]),
     ("Pedelec SPV2-1010", "ebike", []),  # fresh off the line, provisioned
     ("Pedelec SPV2-0900", "ebike", [AssetStatus.ACTIVE, AssetStatus.RETIRED]),

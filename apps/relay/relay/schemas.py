@@ -49,6 +49,24 @@ class TelemetryOut(BaseModel):
     recorded_at: datetime
 
 
+class FleetPosition(BaseModel):
+    """Latest known position + vitals for one reporting asset (the map view).
+
+    Assembled by the API from the most recent lat/lng/battery/speed readings,
+    so it's not an ORM row — no `from_attributes`.
+    """
+
+    asset_id: int
+    name: str
+    type: str
+    status: AssetStatus
+    lat: float
+    lng: float
+    battery: float | None = None
+    speed: float | None = None
+    recorded_at: datetime
+
+
 class TelemetryEvent(BaseModel):
     """The telemetry event contract (the Kafka payload).
 

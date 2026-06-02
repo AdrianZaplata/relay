@@ -68,3 +68,33 @@ async def test_telemetry_roundtrip_via_debug_endpoint(client):
     series = (await client.get(f"/assets/{aid}/telemetry?metric=battery")).json()
     assert len(series) == 1
     assert series[0]["value"] == 91.5
+
+
+@pytest.mark.asyncio
+async def test_fleet_positions(client):
+    asset = await _create(client, name="Pedelec SPV2-9001", type_="ebike")
+    aid = asset["id"]
+    await client.post(f"/assets/{aid}/transition", json={"to_status": "active"})
+
+    # No GPS reported yet → the bike isn't placeable, so the map is empty.
+    assert (await client.get("/fleet/positions")).json() == []
+
+    # Report position (+ vitals) through the debug ingest path.
+    readings = [("lat", 52.52), ("lng", 13.405), ("battery", 88.0), ("speed", 17.5)]
+    for metric, value in readings:
+        r = await client.post(
+            f"/assets/{aid}/telemetry",
+            json={"metric": metric, "value": value, "event_id": f"{metric}-1"},
+        )
+        assert r.status_code == 201
+
+    positions = (await client.get("/fleet/positions")).json()
+    assert len(positions) == 1
+    pos = positions[0]
+    assert pos["asset_id"] == aid
+    assert pos["name"] == "Pedelec SPV2-9001"
+    assert pos["status"] == "active"
+    assert pos["lat"] == 52.52
+    assert pos["lng"] == 13.405
+    assert pos["battery"] == 88.0
+    assert pos["speed"] == 17.5

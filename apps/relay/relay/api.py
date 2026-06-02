@@ -7,10 +7,11 @@ a documented debug/seed convenience that reuses the same idempotent writer.
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import desc, select, text
+from sqlalchemy import and_, desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import schemas
@@ -177,3 +178,76 @@ async def ingest_telemetry_http(
         select(Telemetry).where(Telemetry.event_id == reading.event_id)
     )
     return row
+
+
+# --- fleet map ---------------------------------------------------------------
+@app.get(
+    "/fleet/positions",
+    response_model=list[schemas.FleetPosition],
+    tags=["fleet"],
+)
+async def fleet_positions(session: AsyncSession = Depends(get_session)):
+    """Latest GPS position (+ battery/speed) per reporting asset, for the map.
+
+    Takes the most recent reading per `(asset_id, metric)` for the position
+    metrics via a portable join-on-MAX (a subquery of grouped `max(recorded_at)`
+    joined back to the table on equality) — works on Postgres *and* the SQLite
+    test DB, avoiding the Postgres-only `DISTINCT ON`. Only assets reporting
+    both lat and lng are placeable, so those are the ones we return.
+    """
+    metrics = ("lat", "lng", "battery", "speed")
+    latest = (
+        select(
+            Telemetry.asset_id.label("asset_id"),
+            Telemetry.metric.label("metric"),
+            func.max(Telemetry.recorded_at).label("recorded_at"),
+        )
+        .where(Telemetry.metric.in_(metrics))
+        .group_by(Telemetry.asset_id, Telemetry.metric)
+        .subquery()
+    )
+    stmt = select(Telemetry).join(
+        latest,
+        and_(
+            Telemetry.asset_id == latest.c.asset_id,
+            Telemetry.metric == latest.c.metric,
+            Telemetry.recorded_at == latest.c.recorded_at,
+        ),
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+
+    # Collapse to one record per asset: {asset_id: {metric: (value, recorded_at)}}.
+    by_asset: dict[int, dict[str, tuple[float, datetime]]] = {}
+    for row in rows:
+        by_asset.setdefault(row.asset_id, {})[row.metric] = (row.value, row.recorded_at)
+    if not by_asset:
+        return []
+
+    assets = (
+        await session.execute(select(Asset).where(Asset.id.in_(by_asset.keys())))
+    ).scalars().all()
+    asset_by_id = {a.id: a for a in assets}
+
+    positions: list[schemas.FleetPosition] = []
+    for asset_id, metric_map in by_asset.items():
+        asset = asset_by_id.get(asset_id)
+        # Need both coordinates to place a marker; skip half-reported assets.
+        if asset is None or "lat" not in metric_map or "lng" not in metric_map:
+            continue
+        lat, lat_ts = metric_map["lat"]
+        lng, lng_ts = metric_map["lng"]
+        positions.append(
+            schemas.FleetPosition(
+                asset_id=asset_id,
+                name=asset.name,
+                type=asset.type,
+                status=asset.status,
+                lat=lat,
+                lng=lng,
+                battery=metric_map["battery"][0] if "battery" in metric_map else None,
+                speed=metric_map["speed"][0] if "speed" in metric_map else None,
+                recorded_at=max(lat_ts, lng_ts),
+            )
+        )
+    positions.sort(key=lambda p: p.asset_id)
+    return positions

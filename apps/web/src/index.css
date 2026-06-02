@@ -376,3 +376,126 @@ table.assets tbody tr.sel td {
   font-size: 13px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
+
+/* View switch (Console / Map) in the top bar */
+.views {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.views button {
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.views button:hover {
+  color: #fff;
+}
+
+.views button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Fleet map */
+.map-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Leaflet needs an explicit height or the container collapses to 0px. */
+.map {
+  flex: 1;
+  min-height: 480px;
+}
+
+.map-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+}
+
+.legend-title {
+  font-weight: 700;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.legend-dot.ok {
+  background: #16a34a;
+}
+
+.legend-dot.low {
+  background: #dc2626;
+}
+
+.legend-dot.off {
+  background: #64748b;
+}
+
+/* Marker popup */
+.map-popup strong {
+  font-size: 14px;
+}
+
+.map-popup dl {
+  margin: 8px 0 0;
+  display: grid;
+  gap: 3px;
+}
+
+.map-popup dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.map-popup dt {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.map-popup dd {
+  margin: 0;
+  font-weight: 600;
+  text-transform: capitalize;
+}
