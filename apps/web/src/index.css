@@ -470,6 +470,23 @@ table.assets tbody tr.sel td {
   background: #64748b;
 }
 
+/* Shown when the map's poll has failed repeatedly — the markers on screen are
+   the last known fix, not live. */
+.map-stale {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 6px 14px;
+  background: var(--retired);
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Marker popup */
 .map-popup strong {
   font-size: 14px;

@@ -1,4 +1,5 @@
 import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip } from 'react-leaflet'
+import { LOW_BATTERY_PCT, MARKER_COLORS } from '../constants'
 import type { FleetPosition } from '../types'
 
 // Berlin — the simulated fleet reports positions around here.
@@ -8,9 +9,9 @@ const BERLIN: [number, number] = [52.52, 13.405]
 // Leaflet's broken default-icon asset paths under Vite, and lets the dot encode
 // state by colour — green = active & healthy, red = low battery, slate = not in service.
 function markerColor(p: FleetPosition): string {
-  if (p.status !== 'active') return '#64748b'
-  if (p.battery != null && p.battery < 25) return '#dc2626'
-  return '#16a34a'
+  if (p.status !== 'active') return MARKER_COLORS.off
+  if (p.battery != null && p.battery < LOW_BATTERY_PCT) return MARKER_COLORS.low
+  return MARKER_COLORS.active
 }
 
 export function FleetMap({ positions }: { positions: FleetPosition[] }) {

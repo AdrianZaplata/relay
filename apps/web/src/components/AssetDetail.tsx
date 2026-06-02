@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, api } from '../api'
+import { POLL_MS } from '../constants'
 import type { Asset, AssetEvent, AssetStatus, Telemetry } from '../types'
 import { StatusBadge } from './StatusBadge'
 import { TelemetryChart } from './TelemetryChart'
@@ -31,7 +32,7 @@ export function AssetDetail({ asset, onChanged }: { asset: Asset; onChanged: () 
   useEffect(() => {
     setMsg(null)
     load()
-    const timer = setInterval(load, 3000)
+    const timer = setInterval(load, POLL_MS)
     return () => clearInterval(timer)
   }, [load])
 
