@@ -6,8 +6,9 @@ a documented debug/seed convenience that reuses the same idempotent writer.
 """
 
 import logging
+import math
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -181,6 +182,12 @@ async def ingest_telemetry_http(
 
 
 # --- fleet map ---------------------------------------------------------------
+# A bike that has gone silent for longer than this drops off the live map.
+# Bounds the position query to recent telemetry so it scales with fleet size,
+# not total table history (the table is append-only and unbounded).
+POSITION_MAX_AGE = timedelta(hours=1)
+
+
 @app.get(
     "/fleet/positions",
     response_model=list[schemas.FleetPosition],
@@ -194,15 +201,19 @@ async def fleet_positions(session: AsyncSession = Depends(get_session)):
     joined back to the table on equality) — works on Postgres *and* the SQLite
     test DB, avoiding the Postgres-only `DISTINCT ON`. Only assets reporting
     both lat and lng are placeable, so those are the ones we return.
+
+    Bounded to telemetry within `POSITION_MAX_AGE` so the scan stays proportional
+    to recent traffic rather than all history.
     """
     metrics = ("lat", "lng", "battery", "speed")
+    cutoff = datetime.now(timezone.utc) - POSITION_MAX_AGE
     latest = (
         select(
             Telemetry.asset_id.label("asset_id"),
             Telemetry.metric.label("metric"),
             func.max(Telemetry.recorded_at).label("recorded_at"),
         )
-        .where(Telemetry.metric.in_(metrics))
+        .where(Telemetry.metric.in_(metrics), Telemetry.recorded_at >= cutoff)
         .group_by(Telemetry.asset_id, Telemetry.metric)
         .subquery()
     )
@@ -216,10 +227,14 @@ async def fleet_positions(session: AsyncSession = Depends(get_session)):
     )
     rows = (await session.execute(stmt)).scalars().all()
 
-    # Collapse to one record per asset: {asset_id: {metric: (value, recorded_at)}}.
-    by_asset: dict[int, dict[str, tuple[float, datetime]]] = {}
+    # Collapse to one row per (asset, metric). On `recorded_at` ties the join
+    # yields multiple rows; keep the newest by `id` so "latest wins" is
+    # deterministic instead of an arbitrary DB row order.
+    by_asset: dict[int, dict[str, Telemetry]] = {}
     for row in rows:
-        by_asset.setdefault(row.asset_id, {})[row.metric] = (row.value, row.recorded_at)
+        current = by_asset.setdefault(row.asset_id, {}).get(row.metric)
+        if current is None or row.id > current.id:
+            by_asset[row.asset_id][row.metric] = row
     if not by_asset:
         return []
 
@@ -234,8 +249,11 @@ async def fleet_positions(session: AsyncSession = Depends(get_session)):
         # Need both coordinates to place a marker; skip half-reported assets.
         if asset is None or "lat" not in metric_map or "lng" not in metric_map:
             continue
-        lat, lat_ts = metric_map["lat"]
-        lng, lng_ts = metric_map["lng"]
+        lat, lng = metric_map["lat"].value, metric_map["lng"].value
+        # Guard non-finite coords (a Float column accepts NaN/Inf): they break
+        # JSON and place a marker at undefined coordinates on the client.
+        if not (math.isfinite(lat) and math.isfinite(lng)):
+            continue
         positions.append(
             schemas.FleetPosition(
                 asset_id=asset_id,
@@ -244,9 +262,11 @@ async def fleet_positions(session: AsyncSession = Depends(get_session)):
                 status=asset.status,
                 lat=lat,
                 lng=lng,
-                battery=metric_map["battery"][0] if "battery" in metric_map else None,
-                speed=metric_map["speed"][0] if "speed" in metric_map else None,
-                recorded_at=max(lat_ts, lng_ts),
+                battery=metric_map["battery"].value if "battery" in metric_map else None,
+                speed=metric_map["speed"].value if "speed" in metric_map else None,
+                recorded_at=max(
+                    metric_map["lat"].recorded_at, metric_map["lng"].recorded_at
+                ),
             )
         )
     positions.sort(key=lambda p: p.asset_id)
