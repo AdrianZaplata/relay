@@ -4,8 +4,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{- end -}}
 
+{{/* registry is optional: when empty (dev/kind, where images are loaded straight
+     into the node's local store) render a bare "component:tag" instead of an
+     invalid "/component:tag". Production sets image.registry and is unaffected. */}}
 {{- define "relay.image" -}}
-{{ .Values.image.registry }}/{{ .component }}:{{ .Values.image.tag }}
+{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .component }}:{{ .Values.image.tag }}
 {{- end -}}
 
 {{/* Shared RELAY_* env for the api and ingestor (same codebase, same config). */}}

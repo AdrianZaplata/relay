@@ -1,0 +1,45 @@
+# Dev overlay — a self-contained Relay on a throwaway kind cluster.
+#
+# Differences from production (values.yaml):
+#   - in-cluster Postgres + Redpanda instead of managed PG Flex + Strimzi
+#   - bare, locally-built :dev images loaded into kind (no registry, never pulled)
+#   - HPAs off (kind has no metrics-server) and ingress off (use port-forward)
+#   - the device simulator runs, to produce live telemetry for the demo
+#
+# Used by deploy/kind/up.sh and deploy/argocd/relay-application-dev.yaml.
+
+# Stand up the dev Postgres + Redpanda from templates/dev-datastores.yaml.
+devDatastores:
+  enabled: true
+
+image:
+  registry: "" # bare names: relay-service:dev / relay-web:dev / relay-simulator:dev
+  tag: dev
+  pullPolicy: IfNotPresent # resolve from kind's local store — never reach a registry
+
+config:
+  # Point the app at the in-cluster Redpanda Service (templates/dev-datastores.yaml).
+  kafkaBootstrapServers: relay-redpanda:9092
+
+# Demo telemetry producer — on for the demo, off in real environments.
+simulator:
+  enabled: true
+
+# kind ships no metrics-server, so HPAs would sit at <unknown> and never scale.
+# Pin explicit replica counts instead. One replica each keeps the demo lean.
+api:
+  replicas: 1
+  autoscaling:
+    enabled: false
+
+ingestor:
+  replicas: 1
+  autoscaling:
+    enabled: false
+
+web:
+  replicas: 1 # the GitOps loop demo bumps this 1 -> 2 and lets ArgoCD reconcile
+
+# No ingress controller in kind — reach the app with `kubectl port-forward`.
+ingress:
+  enabled: false

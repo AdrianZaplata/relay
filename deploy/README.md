@@ -15,8 +15,9 @@ How Relay goes from a git commit to running pods, the GitOps way.
 | Path | What it is | Runs? |
 |---|---|---|
 | `compose/` | Local dev + demo (Postgres + Redpanda + all services) | **Yes — `make demo`** |
-| `helm/relay/` | Production packaging of the app services | Authored + `helm lint`/`template` validated |
-| `argocd/` | ArgoCD `Application` — the GitOps glue | Authored |
+| `kind/` | Local Kubernetes overlay — the chart on a real cluster | **Yes — `deploy/kind/up.sh`** |
+| `helm/relay/` | Helm packaging of the app services (prod + dev overlay) | **Yes — runs on kind**; prod path `helm lint`/`template`-validated |
+| `argocd/` | ArgoCD `Application` — the GitOps glue | **Yes — reconciles kind** (`deploy/argocd/up.sh`) |
 | `terraform/` | STACKIT infra (SKE, PG Flex, Object Storage, Secrets Manager) | Authored |
 
 ## Separation of concerns
@@ -32,14 +33,51 @@ ArgoCD continuously compares the live cluster against the desired state declared
 git (`deploy/helm/relay`). On drift — a new image tag from CI, an edited replica count,
 or someone hand-editing a Deployment — it syncs the cluster back to git. `selfHeal`
 reverts manual changes; `prune` deletes resources removed from git. Git is the only
-way to change production.
+way to change production — and you can watch that loop happen on a local cluster below.
 
-## Running it for real (not done in this build)
+## Running it for real (on kind)
+
+The whole loop runs end-to-end on a local [kind](https://kind.sigs.k8s.io) cluster.
+The production chart deliberately ships **no** datastores (it expects managed PG Flex +
+Strimzi), so a dev overlay — `values-dev.yaml`, gated by `devDatastores.enabled` —
+adds an in-cluster Postgres + Redpanda to make the cluster self-contained. The app runs
+from locally-built `:dev` images loaded straight into the kind node; nothing is pushed
+to a registry.
 
 ```bash
-kind create cluster
-kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl apply -f deploy/argocd/relay-application.yaml
-# then: edit deploy/helm/relay/values.yaml in git, push, watch ArgoCD sync.
+# 1. Cluster + chart: create kind, build the 3 images, load them, helm install, seed.
+bash deploy/kind/up.sh
+
+# 2. See it: two port-forwards (web serves the SPA, api answers its calls).
+kubectl -n relay port-forward svc/relay-web 8080:80 &
+kubectl -n relay port-forward svc/relay-api  8000:80 &
+open http://localhost:8080
+
+# 3. GitOps: install ArgoCD and point it at this repo.
+bash deploy/argocd/up.sh
 ```
+
+### Demo the loop (merge → reconcile)
+
+With ArgoCD watching the repo, git is the only way to change the cluster:
+
+```bash
+# edit deploy/helm/relay/values-dev.yaml: web.replicas 1 -> 2
+git commit -am 'demo: scale web to 2' && git push
+kubectl -n argocd annotate app relay-dev argocd.argoproj.io/refresh=hard --overwrite
+kubectl -n relay get pods -l app.kubernetes.io/name=relay-web -w   # a 2nd pod appears
+```
+
+Tear down with `kind delete cluster --name relay`.
+
+### kind (dev) vs production
+
+|  | kind (dev) | production |
+|---|---|---|
+| Datastores | in-cluster Postgres + Redpanda (`devDatastores.enabled`) | managed PG Flex + Strimzi |
+| Images | bare `:dev`, loaded into the node | registry images, SHA-tagged by CI |
+| Values | `values-dev.yaml` | `values.yaml` |
+| ArgoCD `Application` | `relay-application-dev.yaml` | `relay-application.yaml` |
+| HPA / Ingress | off (kind has no metrics-server / ingress controller) | on |
+
+Same chart, same ArgoCD contract — only the values differ.

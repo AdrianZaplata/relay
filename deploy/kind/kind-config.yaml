@@ -1,0 +1,9 @@
+# Single-node kind cluster for the Relay GitOps demo.
+# One node is plenty: this is a throwaway cluster to prove the Helm chart runs and
+# ArgoCD reconciles it. App reachability is via `kubectl port-forward` (no ingress
+# controller), so no extraPortMappings are needed.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: relay
+nodes:
+  - role: control-plane
