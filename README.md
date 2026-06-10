@@ -12,6 +12,8 @@ service serves a **React/TypeScript** operator console.
 > ingestion, a hot/cold data split, GitOps delivery — at small scale, so every design
 > decision is one I made and can defend. See [`docs/adr/`](docs/adr/).
 
+<img width="1920" height="1080" alt="relay" src="https://github.com/user-attachments/assets/da6f2fa9-4efe-42ea-b7c2-a9f9cdc423d6" />
+
 ---
 
 ## Architecture
